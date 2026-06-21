@@ -1,102 +1,46 @@
 # wedding-photo-sorter
 
-A local web app for culling large sets of wedding photos down to a final selection across multiple passes. Built for speed — keyboard-driven, state-persisted, mobile-friendly reviewer flow.
+My sister got married. We had ~1800 photos. I was in one city, she was in another.
 
-## How it works
+I couldn't just open a folder, manually copy-paste into another folder, lose track of what I'd seen, close the tab, reopen it, lose track again. So I built this little app over a couple of evenings to make the whole thing not terrible.
 
-1. Extract all your photos into an `images/` folder
-2. Run the app — go through photos one by one, `Enter` to keep, `Space` to skip
-3. After each pass, start the next pass from only the selected photos
-4. Repeat until you're happy with the count
-5. Share a reviewer link with someone else (via ngrok) so they can vote on your final selection from their phone
-6. Export the final accepted photos to an `accepted/` folder
+It probably won't be useful to anyone else. The use case is pretty specific — too many photos, multiple passes to narrow them down, and someone you love on the other end of an ngrok tunnel tapping ✓ or ✕ on their phone. But I'm pushing it anyway. Maybe as a reminder. Maybe as a souvenir. I don't know.
+
+---
+
+## What it does
+
+- Shows you photos one by one, fullscreen. `Enter` to keep, `Space` to skip.
+- Saves your progress after every keypress so you can quit and come back.
+- Multiple passes — first pass might get you to 500, second to 300, third to 200. However many it takes.
+- A mobile-friendly reviewer page so someone else can weigh in on your final cut from their phone (we used ngrok to share it).
+- A comparison dashboard so you can see what they accepted and rejected.
+- Exports the final selection as actual files into an `accepted/` folder.
 
 ## Setup
 
 ```bash
 python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-```
-
-## Usage
-
-```bash
 ./run.sh
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in your browser.
+Open [http://localhost:8080](http://localhost:8080).
 
-### Keyboard shortcuts (culling UI)
+Put your photos in an `images/` folder first.
 
-| Key | Action |
-|-----|--------|
-| `Enter` | Select image |
-| `Space` | Skip image |
-| `←` | Go back |
-
-### Multi-pass flow
-
-- Each pass shows only the images you selected in the previous pass
-- Counter always shows how many selected so far
-- Progress is saved after every keypress — safe to quit and resume anytime
-- When a pass is complete, click **Start Next Pass**
-
-### Adding missed photos mid-way
-
-If you forgot a batch of photos after completing a pass, extract them into `images/` and click **+ Add More Images** on the completion screen. It creates a supplemental pass for just the new photos, then merges both selections when you start the next pass.
-
-## Reviewer flow (mobile)
-
-Once you have a final selection, share it with someone for a second opinion:
-
-1. Generate compressed thumbnails (one-time, ~200KB per image instead of 10MB):
-   ```bash
-   .venv/bin/python generate_thumbs.py
-   ```
-
-2. Expose the app via [ngrok](https://ngrok.com):
-   ```bash
-   ngrok http 8080
-   ```
-
-3. Share `https://<your-ngrok-url>/review` with the reviewer
-
-The reviewer sees each photo with **✕** / **✓** buttons and ← → to navigate. Their decisions are saved to `review_state.json` — completely separate from your culling state.
-
-4. Watch their progress live at [http://localhost:8080/compare](http://localhost:8080/compare)
-
-### Export final photos
-
-Once the reviewer is done, copy all accepted photos to an `accepted/` folder:
+## Reviewer flow
 
 ```bash
-.venv/bin/python3 -c "
-import json, os, shutil
-with open('review_state.json') as f:
-    r = json.load(f)
-accepted = [img for img in r['pool'] if r['decisions'].get(img) == 'accept']
-os.makedirs('accepted', exist_ok=True)
-for img in accepted:
-    shutil.copy2(os.path.join('images', img), os.path.join('accepted', os.path.basename(img)))
-print(f'{len(accepted)} photos copied to accepted/')
-"
+# Generate compressed thumbnails so you don't murder their mobile data
+.venv/bin/python generate_thumbs.py
+
+# Expose locally via ngrok
+ngrok http 8080
 ```
 
-## File structure
+Send them `https://<ngrok-url>/review`. Watch their progress at `http://localhost:8080/compare`.
 
-```
-.
-├── app.py                 # Flask backend
-├── generate_thumbs.py     # One-time thumbnail generator
-├── run.sh                 # Start the app
-├── requirements.txt
-├── templates/
-│   ├── index.html         # Culling UI
-│   ├── review.html        # Mobile reviewer UI
-│   └── compare.html       # Review results dashboard
-├── images/                # Your photos go here (gitignored)
-├── thumbs/                # Auto-generated thumbnails (gitignored)
-├── accepted/              # Final export (gitignored)
-├── state.json             # Culling progress (gitignored)
-└── review_state.json      # Reviewer progress (gitignored)
-```
+## That's it
+
+It's scrappy. It works. The photos are picked. The wedding was beautiful.
