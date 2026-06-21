@@ -43,4 +43,4 @@ Send them `https://<ngrok-url>/review`. Watch their progress at `http://localhos
 
 ## That's it
 
-It's scrappy. It works. The photos are picked. The wedding was beautiful.
+It's scrappy. It works. The photos are picked. The wedding was beautiful. <3
