@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# App data — photos and generated state
+images/
+thumbs/
+accepted/
+state.json
+review_state.json
+*.tmp
+
+# Mac
+.DS_Store
+
+# Chrome downloads
+*.crdownload
+Unconfirmed*

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gallery Selector</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    color: #fff;
+    font-family: ui-monospace, monospace;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+  }
+
+  #image-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  #main-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  #main-img.loaded { opacity: 1; }
+
+  #selected-border {
+    position: absolute;
+    inset: 0;
+    border: 5px solid #22c55e;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  #selected-border.visible { opacity: 1; }
+
+  #tag {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: #22c55e;
+    color: #000;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  #tag.visible { opacity: 1; }
+
+  /* bottom bar */
+  #bar {
+    height: 46px;
+    background: #0d0d0d;
+    border-top: 1px solid #1f1f1f;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .bar-section {
+    flex: 1;
+    display: flex;
+    align-items: center;
+  }
+
+  .bar-section.center { justify-content: center; }
+  .bar-section.right { justify-content: flex-end; }
+
+  #pass-label { color: #555; font-size: 13px; }
+
+  #progress { color: #999; font-size: 14px; }
+
+  #selected-count {
+    color: #22c55e;
+    font-size: 16px;
+    font-weight: bold;
+    min-width: 110px;
+    text-align: right;
+  }
+
+  #hints { color: #333; font-size: 12px; margin-left: 18px; }
+
+  /* done overlay */
+  #done-screen {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 18px;
+    text-align: center;
+    z-index: 10;
+  }
+
+  #done-screen.visible { display: flex; }
+
+  #done-screen h2 { font-size: 26px; color: #22c55e; }
+  #done-screen p { color: #888; font-size: 15px; }
+
+  .btn-row { display: flex; gap: 12px; margin-top: 6px; }
+
+  button {
+    background: #22c55e;
+    color: #000;
+    border: none;
+    padding: 11px 26px;
+    font-size: 15px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.1s;
+  }
+
+  button:hover { background: #16a34a; }
+
+  button.secondary {
+    background: #1f1f1f;
+    color: #aaa;
+    border: 1px solid #333;
+  }
+
+  button.secondary:hover { background: #2a2a2a; color: #fff; }
+
+  /* empty state */
+  #empty {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 14px;
+    color: #444;
+  }
+
+  #empty.visible { display: flex; }
+  #empty p { font-size: 15px; }
+  #empty small { color: #333; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="image-container">
+  <img id="main-img" src="" alt="">
+  <div id="selected-border"></div>
+  <div id="tag">SELECTED</div>
+
+  <div id="done-screen">
+    <h2 id="done-title">Pass Complete!</h2>
+    <p id="done-summary"></p>
+    <div class="btn-row">
+      <button id="btn-next-pass">Start Next Pass &rarr;</button>
+      <button class="secondary" id="btn-add-images">+ Add More Images</button>
+      <button class="secondary" id="btn-export">Export Filenames</button>
+    </div>
+  </div>
+
+  <div id="empty">
+    <p>No images found in this folder yet.</p>
+    <small>Once downloads finish and zips are extracted, click Rescan.</small>
+    <button id="btn-rescan" style="margin-top:8px;">Rescan Folder</button>
+  </div>
+</div>
+
+<div id="bar">
+  <div class="bar-section">
+    <span id="pass-label">Pass 1</span>
+    <span id="hints">&nbsp;&nbsp;Enter = keep &nbsp; Space = skip &nbsp; &larr; = back</span>
+  </div>
+  <div class="bar-section center">
+    <span id="progress">—</span>
+  </div>
+  <div class="bar-section right">
+    <span id="selected-count">Selected: 0</span>
+  </div>
+</div>
+
+<script>
+  let state = null;
+  let preloadCache = {};
+
+  function pass() { return state.passes[state.current_pass]; }
+
+  async function fetchState() {
+    const res = await fetch('/api/state');
+    state = await res.json();
+    render();
+  }
+
+  async function doAction(action) {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
+    state = await res.json();
+    render();
+  }
+
+  async function startNextPass() {
+    const res = await fetch('/api/next-pass', { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error);
+      return;
+    }
+    state = await res.json();
+    preloadCache = {};
+    render();
+  }
+
+  async function rescan() {
+    const res = await fetch('/api/rescan', { method: 'POST' });
+    state = await res.json();
+    preloadCache = {};
+    render();
+  }
+
+  function imgSrc(filename) {
+    return '/img/' + filename.split('/').map(encodeURIComponent).join('/');
+  }
+
+  function preload(filenames) {
+    filenames.forEach(f => {
+      if (!preloadCache[f]) {
+        const img = new Image();
+        img.src = imgSrc(f);
+        preloadCache[f] = img;
+      }
+    });
+  }
+
+  function render() {
+    if (!state) return;
+    const p = pass();
+    const pool = p.pool;
+    const idx = p.current_index;
+    const total = pool.length;
+    const selectedCount = p.selected.length;
+
+    document.getElementById('pass-label').textContent = `Pass ${p.number}`;
+    document.getElementById('selected-count').textContent = `Selected: ${selectedCount}`;
+
+    const doneScreen = document.getElementById('done-screen');
+    const emptyDiv = document.getElementById('empty');
+
+    // No images at all
+    if (total === 0) {
+      emptyDiv.classList.add('visible');
+      doneScreen.classList.remove('visible');
+      document.getElementById('progress').textContent = '—';
+      return;
+    }
+
+    emptyDiv.classList.remove('visible');
+
+    // Pass complete
+    if (p.completed) {
+      doneScreen.classList.add('visible');
+      document.getElementById('done-title').textContent = `Pass ${p.number} Complete!`;
+      if (p.supplemental) {
+        const prevSelected = state.passes[state.current_pass - 1]?.selected?.length ?? 0;
+        document.getElementById('done-summary').textContent =
+          `Selected ${selectedCount} from new batch. Next pass will combine with ${prevSelected} from before → ${selectedCount + prevSelected} total.`;
+      } else {
+        document.getElementById('done-summary').textContent =
+          `You selected ${selectedCount} out of ${total} images.`;
+      }
+      document.getElementById('progress').textContent = `${total} / ${total}`;
+      return;
+    }
+
+    doneScreen.classList.remove('visible');
+
+    // Normal view
+    const filename = pool[idx];
+    document.getElementById('progress').textContent = `${idx + 1} / ${total}`;
+
+    const mainImg = document.getElementById('main-img');
+    const src = imgSrc(filename);
+    if (mainImg.getAttribute('data-src') !== src) {
+      mainImg.classList.remove('loaded');
+      mainImg.setAttribute('data-src', src);
+      mainImg.onload = () => mainImg.classList.add('loaded');
+      mainImg.onerror = () => mainImg.classList.add('loaded');
+      mainImg.src = src;
+    }
+
+    // Selected indicator
+    const decision = (p.decisions || {})[filename];
+    const isSelected = decision === 'select';
+    document.getElementById('selected-border').classList.toggle('visible', isSelected);
+    document.getElementById('tag').classList.toggle('visible', isSelected);
+
+    // Preload next 3
+    const nextFiles = pool.slice(idx + 1, idx + 4);
+    preload(nextFiles);
+  }
+
+  document.addEventListener('keydown', async (e) => {
+    if (!state) return;
+    const p = pass();
+    if (p.completed || p.pool.length === 0) return;
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      await doAction('select');
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      await doAction('skip');
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      await doAction('back');
+    }
+  });
+
+  document.getElementById('btn-next-pass').addEventListener('click', startNextPass);
+  document.getElementById('btn-rescan').addEventListener('click', rescan);
+
+  document.getElementById('btn-add-images').addEventListener('click', async () => {
+    const res = await fetch('/api/add-images', { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error);
+      return;
+    }
+    state = await res.json();
+    preloadCache = {};
+    render();
+  });
+
+  document.getElementById('btn-export').addEventListener('click', () => {
+    window.open('/api/export', '_blank');
+  });
+
+  fetchState();
+</script>
+</body>
+</html>
